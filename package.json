@@ -9,7 +9,7 @@
     "build": "tsc"
   },
   "author": "Jakub Głuszek",
-  "license": "ISC",
+  "license": "MIT",
   "packageManager": "pnpm@10.10.0",
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.1",
