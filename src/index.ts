@@ -4,6 +4,7 @@ import {
   logSearchParameters,
   logSearchResults,
   formatElapsedTime,
+  exportToMarkdown,
 } from "./utils/logger.js";
 import { likelyClientTypes } from "./const.js";
 import { SearchOptions, BusinessResult } from "./types.js";
@@ -27,9 +28,6 @@ const DEFAULT_CONFIG: SearchOptions = {
   batchSize: 5,
   batchDelay: 200, // 200ms delay between batches
 };
-
-// Get current file's URL for ESM module detection
-const currentFileUrl = import.meta.url;
 
 /**
  * Searches for businesses without proper websites in a given area
@@ -132,13 +130,12 @@ async function main(): Promise<void> {
 
     const elapsedTime = formatElapsedTime(startTime);
 
-    // Log the search results
+    // Log the search results to console
     logSearchResults(businesses, elapsedTime);
 
-    // Export the results if needed
-    if (businesses.length > 0 && process.env.EXPORT_RESULTS === "true") {
-      // Could add export functionality here (CSV, JSON, etc.)
-      console.log(`\nResults could be exported to a file.`);
+    // Export the results to a Markdown file
+    if (businesses.length > 0) {
+      exportToMarkdown(businesses, elapsedTime);
     }
   } catch (error) {
     console.error(

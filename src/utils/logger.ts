@@ -1,5 +1,7 @@
 import { BusinessResult, PlaceDetails } from "../types.js";
 import chalk from "chalk";
+import fs from "fs";
+import path from "path";
 
 /**
  * Formats and logs search parameters
@@ -168,6 +170,88 @@ export function extractBusinessDetails(
     rating: rating,
     totalRatings: user_ratings_total,
   };
+}
+
+/**
+ * Exports search results to a Markdown file
+ * @param businesses - Array of found businesses
+ * @param elapsedTime - Time taken for the search operation
+ * @returns Path to the generated markdown file
+ */
+export function exportToMarkdown(
+  businesses: BusinessResult[],
+  elapsedTime?: string,
+): string {
+  if (businesses.length === 0) {
+    console.log(chalk.yellow("\nNo businesses to export."));
+    return "";
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outputDir = path.join(process.cwd(), "results");
+  const outputPath = path.join(outputDir, `search-results-${timestamp}.md`);
+
+  // Create results directory if it doesn't exist
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  // Group businesses by type
+  const groupedByType = groupBusinessesByType(businesses);
+
+  // Build markdown content
+  let markdown = `# Business Search Results\n\n`;
+  markdown += `*Generated on ${new Date().toLocaleString()}*\n\n`;
+  
+  // Add summary section
+  const noWebsiteCount = businesses.filter((b) => b.hasNoWebsite).length;
+  const socialOnlyCount = businesses.filter((b) => b.hasSocialOnly).length;
+  
+  markdown += `## 📊 Summary\n\n`;
+  markdown += `- **Total businesses without proper websites**: ${businesses.length}\n`;
+  markdown += `- **Businesses with no website**: ${noWebsiteCount}\n`;
+  markdown += `- **Businesses with social media only**: ${socialOnlyCount}\n`;
+  
+  if (elapsedTime) {
+    markdown += `- **Search completed in**: ${elapsedTime}\n`;
+  }
+  
+  markdown += `\n## 🔍 Search Results\n`;
+
+  // Add business listings grouped by type
+  Object.entries(groupedByType).forEach(([type, businessList]) => {
+    markdown += `\n### ${formatBusinessType(type)} (${businessList.length})\n\n`;
+
+    businessList.forEach((business) => {
+      const status = business.hasNoWebsite ? "⛔ No website" : "🔗 Social media only";
+      markdown += `#### ${business.name} (${status})\n\n`;
+
+      if (business.address) {
+        markdown += `- **Address**: ${business.address}\n`;
+      }
+
+      if (business.phone) {
+        markdown += `- **Phone**: ${business.phone}\n`;
+      }
+
+      if (business.rating) {
+        const stars = "⭐".repeat(Math.round(business.rating));
+        markdown += `- **Rating**: ${stars} ${business.rating}/5 (${business.totalRatings} reviews)\n`;
+      }
+
+      if (business.website) {
+        markdown += `- **Website**: [${business.website}](${business.website})\n`;
+      }
+      
+      markdown += `\n`;
+    });
+  });
+
+  // Save to file
+  fs.writeFileSync(outputPath, markdown);
+  console.log(chalk.green(`\n✅ Results exported to: ${outputPath}`));
+  
+  return outputPath;
 }
 
 /**
