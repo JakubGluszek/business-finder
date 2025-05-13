@@ -1,0 +1,22 @@
+{
+  "name": "google-maps-business-search",
+  "version": "1.0.0",
+  "description": "Find businesses without proper websites",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc"
+  },
+  "author": "Jakub Głuszek",
+  "license": "ISC",
+  "packageManager": "pnpm@10.10.0",
+  "dependencies": {
+    "@googlemaps/google-maps-services-js": "^3.4.1",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "typescript": "^5.8.3"
+  }
+}
