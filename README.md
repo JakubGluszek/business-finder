@@ -1,57 +1,85 @@
-# Google Maps Business Search
+# Business Finder
 
-A Node.js application that uses the Google Maps API to find businesses without proper websites.
+A TypeScript application to find businesses without proper websites using the Google Maps API. This tool helps identify potential clients for web development services.
 
 ## Features
 
-- Search for businesses within a specified radius
-- Filter businesses by type (restaurant, store, cafe, etc.)
-- Identify businesses that:
-  - Have no website
-  - Only use social media (Facebook, Instagram) as their website
+- Search for businesses by type within a specified radius
+- Identify businesses with:
 
-## Prerequisites
+  - No website at all
+  - Only social media presence
 
-- Node.js
-- pnpm
-- Google Maps API key
+- Detailed place information including:
 
-## Installation
+  - Name and address
+  - Phone number
+  - Ratings and reviews
+  - Website information
 
-1. Clone the repository:
-```
-git clone https://github.com/yourusername/google-maps-business-search.git
-cd google-maps-business-search
-```
+- Colorful console output for easy reading
+- Configurable search parameters
 
+## Setup
+
+1. Clone this repository
 2. Install dependencies:
-```
-pnpm install
-```
 
-3. Create a `.env` file in the root directory and add your Google Maps API key:
-```
-GOOGLE_API_KEY=your_api_key_here
-```
+   ```bash
+   pnpm install
+   ```
+
+3. Create a `.env` file in the root directory with your Google Maps API key:
+
+   ```
+   GOOGLE_API_KEY=your_api_key_here
+   EXPORT_RESULTS=false
+   ```
+
+4. Build the TypeScript code:
+
+   ```bash
+   pnpm run build
+   ```
 
 ## Usage
 
-Modify the parameters in `src/index.ts` to customize your search:
-
-```typescript
-// Define the search parameters
-const location = { lat: 52.2297, lng: 21.0122 }; // Warsaw, Poland
-const radius = 5000; // 5km radius
-const businessType = "restaurant"; // Change to 'store', 'cafe', etc. as needed
-```
-
 Run the application:
-```
+
+```bash
 pnpm start
 ```
 
-The output will display a list of businesses that don't have proper websites.
+### Advanced Usage
+
+You can modify the search parameters in `src/index.ts` to customize:
+
+- Geographic location
+- Search radius
+- Business types to target
+- Social media domains to check
+
+## Project Structure
+
+- `src/index.ts` - Main application entry point
+- `src/const.ts` - Constants and configuration values
+- `src/types/index.ts` - TypeScript type definitions
+- `src/services/googleMapsService.ts` - Google Maps API service
+- `src/utils/logger.ts` - Logging and formatting utilities
+
+## Development
+
+Run in development mode with live reload:
+
+```bash
+pnpm run dev
+```
+
+## Requirements
+
+- Node.js 18 or higher
+- Google Maps API key with Places API enabled
 
 ## License
 
-MIT 
+MIT

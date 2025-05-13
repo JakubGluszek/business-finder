@@ -1,64 +1,159 @@
 import "dotenv/config";
-import { Client } from "@googlemaps/google-maps-services-js";
+import { GoogleMapsService } from "./services/googleMapsService.js";
+import {
+  logSearchParameters,
+  logSearchResults,
+  formatElapsedTime,
+} from "./utils/logger.js";
+import { likelyClientTypes } from "./const.js";
+import { SearchOptions, BusinessResult } from "./types.js";
+import { fileURLToPath } from "url";
 
-// Initialize the Google Maps client
-const gmaps = new Client({});
+/**
+ * Default configuration for the search
+ */
+const DEFAULT_CONFIG: SearchOptions = {
+  location: { lat: 49.8220544, lng: 19.0319995 }, // Bielsko-Biała, Poland
+  radius: 10000, // 10km radius
+  apiKey: process.env.GOOGLE_API_KEY,
+  businessTypes: likelyClientTypes,
+  socialMediaDomains: [
+    "facebook.com",
+    "instagram.com",
+    "twitter.com",
+    "linkedin.com",
+    "tiktok.com",
+  ],
+  batchSize: 5,
+  batchDelay: 200, // 200ms delay between batches
+};
 
-// Define the search parameters
-const location = { lat: 52.2297, lng: 21.0122 }; // Warsaw, Poland
-const radius = 5000; // 5km radius
-const businessType = "restaurant"; // Change to 'store', 'cafe', etc. as needed
+// Get current file's URL for ESM module detection
+const currentFileUrl = import.meta.url;
 
-// Main async function to search for businesses
-async function findBusinessesWithoutWebsites(): Promise<void> {
+/**
+ * Searches for businesses without proper websites in a given area
+ * @param options - Configuration options
+ * @returns Array of business results without proper websites
+ */
+async function findBusinessesWithoutWebsites(
+  options: SearchOptions = {},
+): Promise<BusinessResult[]> {
+  // Merge default config with provided options
+  const config = { ...DEFAULT_CONFIG, ...options };
+  const {
+    location,
+    radius,
+    apiKey,
+    businessTypes,
+    socialMediaDomains,
+    batchSize = 5,
+    batchDelay = 200,
+  } = config;
+
+  if (!apiKey) {
+    throw new Error("Google Maps API key is required");
+  }
+
+  // Log search parameters
+  logSearchParameters(location!, radius!, businessTypes!);
+
+  // Initialize the Google Maps service
+  const mapsService = new GoogleMapsService(apiKey);
+  const noWebsiteBusinesses: BusinessResult[] = [];
+
   try {
-    // Perform Nearby Search
-    const response = await gmaps.placesNearby({
-      params: {
-        location,
-        radius,
-        type: businessType,
-        key: process.env.GOOGLE_API_KEY || "YOUR_API_KEY", // Replace with your API key
-      },
-    });
+    // Process each business type in parallel with controlled concurrency
+    await Promise.all(
+      [...businessTypes!].map(async (placeType) => {
+        try {
+          // Search for places of this type
+          const places = await mapsService.searchNearbyPlaces(
+            location!,
+            radius!,
+            placeType,
+          );
 
-    const places = response.data.results;
-    const noWebsiteBusinesses: string[] = [];
+          if (places.length === 0) {
+            console.log(`No ${placeType} places found in the area.`);
+            return;
+          }
 
-    // Iterate through places to check website details
-    for (const place of places) {
-      if (!place.place_id) continue;
-      const detailsResponse = await gmaps.placeDetails({
-        params: {
-          place_id: place.place_id,
-          fields: ["website"],
-          key: process.env.GOOGLE_API_KEY || "YOUR_API_KEY",
-        },
-      });
+          console.log(
+            `Found ${places.length} ${placeType} places. Checking details...`,
+          );
 
-      const website: string | undefined = detailsResponse.data.result.website;
+          // Batch place details requests with controlled concurrency
+          for (let i = 0; i < places.length; i += batchSize) {
+            const batch = places.slice(i, i + batchSize);
 
-      // Check if website is missing or points to social media
-      if (
-        (!website ||
-          website.includes("facebook.com") ||
-          website.includes("instagram.com")) &&
-        place.name
-      ) {
-        noWebsiteBusinesses.push(place.name);
-      }
-    }
+            const results = await mapsService.processBatch(
+              batch,
+              placeType as string,
+              socialMediaDomains!,
+            );
 
-    // Output results
-    if (noWebsiteBusinesses.length > 0) {
-      console.log("Businesses without proper websites:", noWebsiteBusinesses);
-    } else {
-      console.log("No businesses found without proper websites.");
-    }
+            if (results.length > 0) {
+              noWebsiteBusinesses.push(...results);
+            }
+
+            // Add a small delay between batches to avoid hitting rate limits
+            if (i + batchSize < places.length) {
+              await new Promise((resolve) => setTimeout(resolve, batchDelay));
+            }
+          }
+        } catch (error) {
+          console.error(
+            `Error processing place type ${placeType}:`,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }),
+    );
+
+    return noWebsiteBusinesses;
   } catch (error) {
-    console.error("Error:", error);
+    console.error(
+      "Error in findBusinessesWithoutWebsites:",
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
   }
 }
 
-// Run the function
-findBusinessesWithoutWebsites();
+/**
+ * Main function to run the search and display results
+ */
+async function main(): Promise<void> {
+  try {
+    const startTime = Date.now();
+
+    const businesses = await findBusinessesWithoutWebsites();
+
+    const elapsedTime = formatElapsedTime(startTime);
+
+    // Log the search results
+    logSearchResults(businesses, elapsedTime);
+
+    // Export the results if needed
+    if (businesses.length > 0 && process.env.EXPORT_RESULTS === "true") {
+      // Could add export functionality here (CSV, JSON, etc.)
+      console.log(`\nResults could be exported to a file.`);
+    }
+  } catch (error) {
+    console.error(
+      "Error running search:",
+      error instanceof Error ? error.message : String(error),
+    );
+    process.exit(1);
+  }
+}
+
+// Run the script if this file is executed directly
+// ESM equivalent of `if (require.main === module)`
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}
+
+// Export functions for use in other modules
+export { findBusinessesWithoutWebsites, main };
