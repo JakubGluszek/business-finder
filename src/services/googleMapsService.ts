@@ -31,19 +31,40 @@ export class GoogleMapsService {
     location: { lat: number; lng: number },
     radius: number,
     placeType: BusinessType,
-  ) {
+  ): Promise<Array<any>> {
+    let allPlaces: Array<any> = [];
+    let nextPageToken: string | undefined = undefined;
+    const MAX_PAGES = 3; // Google typically allows up to 60 results (20 per page)
+    let currentPage = 0;
+
     try {
-      const response = await this.client.placesNearby({
-        params: {
+      do {
+        currentPage++;
+        const requestParams: any = {
           location,
           radius,
-          type: placeType as any, // Cast to any as PlaceType1 and PlaceType2 compatibility issues
+          type: placeType as any,
           key: this.apiKey,
-        },
-        timeout: 10000, // 10 second timeout
-      });
+        };
+        if (nextPageToken) {
+          requestParams.pagetoken = nextPageToken;
+          // As per Google's documentation, a short delay is needed before using a next_page_token
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
+        }
 
-      return response.data.results;
+        const response = await this.client.placesNearby({
+          params: requestParams,
+          timeout: 10000, // 10 second timeout
+        });
+
+        if (response.data.results) {
+          allPlaces = allPlaces.concat(response.data.results);
+        }
+        nextPageToken = response.data.next_page_token;
+
+      } while (nextPageToken && currentPage < MAX_PAGES);
+
+      return allPlaces;
     } catch (error) {
       console.error(
         `Error searching for ${placeType} places:`,
