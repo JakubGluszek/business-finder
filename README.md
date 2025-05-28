@@ -44,20 +44,58 @@ A TypeScript application to find businesses without proper websites using the Go
 
 ## Usage
 
-Run the application:
+Run the application using the CLI:
 
 ```bash
-pnpm start
+node dist/index.js <command> [options]
 ```
 
-### Advanced Usage
+Or, during development:
 
-You can modify the search parameters in `src/index.ts` to customize:
+```bash
+tsx src/index.ts <command> [options]
+# or using ts-node-esm if you aliased it or have it in your path
+# ts-node-esm src/index.ts <command> [options]
+```
 
-- Geographic location
-- Search radius
-- Business types to target
-- Social media domains to check
+**Note:** Ensure your `.env` file is set up with `GOOGLE_API_KEY` or provide it via the `--apiKey` option.
+
+### Commands and Options
+
+*   **`--mode <mode>` (or `-m <mode>`)**: Specifies the search mode.
+    *   `no-website` (default): Finds businesses with no website or only a social media presence.
+    *   `all`: Finds all businesses matching the criteria, regardless of website status.
+*   **`--lat <latitude>`**: Latitude for the search center (e.g., `49.8220544`). Defaults to Bielsko-Biała, Poland.
+*   **`--lng <longitude>`**: Longitude for the search center (e.g., `19.0319995`). Defaults to Bielsko-Biała, Poland.
+*   **`--radius <meters>` (or `-r <meters>`)**: Search radius in meters (e.g., `20000` for 20km). Defaults to 20000.
+*   **`--businessTypes <types>` (or `-t <types>`)**: Comma-separated list of business types (e.g., `car_repair,restaurant`). Defaults to `restaurant`.
+*   **`--apiKey <key>`**: Your Google Maps API key. Overrides the key in the `.env` file.
+*   **`--socialMediaDomains <domains>`**: Comma-separated list of social media domains (e.g., `facebook.com,instagram.com`) for the `no-website` mode. Defaults to a predefined list.
+*   **`--batchSize <number>`**: Number of place details to fetch concurrently. Defaults to 5.
+*   **`--batchDelay <milliseconds>`**: Delay between batches of place detail requests. Defaults to 200ms.
+*   **`--export` (or `-e`)**: Export results to a Markdown file in the `results/` directory. Defaults to `false` (or the value of `EXPORT_RESULTS` in `.env`).
+*   **`--help` (or `-h`)**: Show help information.
+
+### Examples
+
+1.  **Find restaurants and cafes without websites in a 5km radius around a specific location:**
+    ```bash
+    node dist/index.js --lat 50.0647 --lng 19.9450 --radius 5000 --businessTypes "restaurant,cafe" --mode no-website
+    ```
+
+2.  **Find all car repair shops within a 20km radius of Bielsko-Biała (using defaults) and export results:**
+    ```bash
+    node dist/index.js --businessTypes "car_repair" --mode all --export
+    ```
+
+3.  **Using development environment to find all gyms with a custom API key:**
+    ```bash
+    tsx src/index.ts -t gym -m all --apiKey YOUR_GOOGLE_API_KEY_HERE
+    ```
+
+### Modifying Default Search Parameters
+
+While most parameters are now configurable via CLI options, some base defaults (like the default location if none is provided, or the list of social media domains) are still in `src/index.ts` in the `DEFAULT_CONFIG` object. You can modify these there if needed.
 
 ## Project Structure
 
@@ -73,6 +111,8 @@ Run in development mode with live reload:
 
 ```bash
 pnpm run dev
+# or, for more direct control if you prefer tsx:
+# tsx watch src/index.ts -- --your-cli-options-here
 ```
 
 ## Requirements

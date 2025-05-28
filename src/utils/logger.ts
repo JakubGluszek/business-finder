@@ -129,16 +129,18 @@ export function groupBusinessesByType(
 }
 
 /**
- * Extracts place details into a standardized format
+ * Extracts place details into a standardized format.
+ * If socialMediaDomainsOrMode is "all", it includes all businesses.
+ * Otherwise, it filters for businesses with no website or only social media presence.
  * @param placeDetails - Place details from Google Maps API
  * @param placeType - Type of the place
- * @param socialMediaDomains - Array of social media domains to check against
- * @returns Formatted business result object
+ * @param socialMediaDomainsOrMode - Array of social media domains to check against, or "all"
+ * @returns Formatted business result object or null if filtered out
  */
 export function extractBusinessDetails(
   placeDetails: PlaceDetails,
   placeType: string,
-  socialMediaDomains: readonly string[],
+  socialMediaDomainsOrMode: readonly string[] | "all",
 ): BusinessResult | null {
   const {
     name,
@@ -152,12 +154,17 @@ export function extractBusinessDetails(
   if (!name) return null;
 
   const hasWebsite = Boolean(website);
-  const hasSocialMediaOnly =
-    hasWebsite &&
-    socialMediaDomains.some((domain) => website?.includes(domain));
+  let hasSocialMediaOnly = false;
 
-  // Only include businesses with no website or just social media
-  if (hasWebsite && !hasSocialMediaOnly) return null;
+  if (socialMediaDomainsOrMode !== "all") {
+    hasSocialMediaOnly =
+      hasWebsite &&
+      socialMediaDomainsOrMode.some((domain) => website?.includes(domain));
+
+    // Only include businesses with no website or just social media
+    if (hasWebsite && !hasSocialMediaOnly) return null;
+  }
+  // If mode is "all", we don't filter based on website status, so we proceed.
 
   return {
     name,
@@ -176,11 +183,13 @@ export function extractBusinessDetails(
  * Exports search results to a Markdown file
  * @param businesses - Array of found businesses
  * @param elapsedTime - Time taken for the search operation
+ * @param mode - The search mode ('no-website' or 'all') to include in the filename
  * @returns Path to the generated markdown file
  */
 export function exportToMarkdown(
   businesses: BusinessResult[],
   elapsedTime?: string,
+  mode?: string,
 ): string {
   if (businesses.length === 0) {
     console.log(chalk.yellow("\nNo businesses to export."));
@@ -188,8 +197,9 @@ export function exportToMarkdown(
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const modeString = mode ? `-${mode}` : "";
   const outputDir = path.join(process.cwd(), "results");
-  const outputPath = path.join(outputDir, `search-results-${timestamp}.md`);
+  const outputPath = path.join(outputDir, `search-results${modeString}-${timestamp}.md`);
 
   // Create results directory if it doesn't exist
   if (!fs.existsSync(outputDir)) {
@@ -200,55 +210,62 @@ export function exportToMarkdown(
   const groupedByType = groupBusinessesByType(businesses);
 
   // Build markdown content
-  let markdown = `# Business Search Results\n\n`;
-  markdown += `*Generated on ${new Date().toLocaleString()}*\n\n`;
+  let markdownContent = `# Search Results (Mode: ${mode || 'default'})\n\n`;
+  markdownContent += `*Generated on: ${new Date().toLocaleString()}*\n`;
   
   // Add summary section
   const noWebsiteCount = businesses.filter((b) => b.hasNoWebsite).length;
   const socialOnlyCount = businesses.filter((b) => b.hasSocialOnly).length;
   
-  markdown += `## 📊 Summary\n\n`;
-  markdown += `- **Total businesses without proper websites**: ${businesses.length}\n`;
-  markdown += `- **Businesses with no website**: ${noWebsiteCount}\n`;
-  markdown += `- **Businesses with social media only**: ${socialOnlyCount}\n`;
+  markdownContent += `## 📊 Summary\n\n`;
+  markdownContent += `- **Total businesses without proper websites**: ${businesses.length}\n`;
+  markdownContent += `- **Businesses with no website**: ${noWebsiteCount}\n`;
+  markdownContent += `- **Businesses with social media only**: ${socialOnlyCount}\n`;
   
   if (elapsedTime) {
-    markdown += `- **Search completed in**: ${elapsedTime}\n`;
+    markdownContent += `- **Search completed in**: ${elapsedTime}\n`;
   }
   
-  markdown += `\n## 🔍 Search Results\n`;
+  markdownContent += `\n## 🔍 Search Results\n`;
 
   // Add business listings grouped by type
   Object.entries(groupedByType).forEach(([type, businessList]) => {
-    markdown += `\n### ${formatBusinessType(type)} (${businessList.length})\n\n`;
+    markdownContent += `\n### ${formatBusinessType(type)} (${businessList.length})\n\n`;
 
     businessList.forEach((business) => {
-      const status = business.hasNoWebsite ? "⛔ No website" : "🔗 Social media only";
-      markdown += `#### ${business.name} (${status})\n\n`;
+      const status = business.hasNoWebsite
+        ? "No website"
+        : business.hasSocialOnly
+        ? "Social media only"
+        : business.website
+        ? "Has website"
+        : "Website status unknown";
+
+      markdownContent += `#### ${business.name} (${status})\n\n`;
 
       if (business.address) {
-        markdown += `- **Address**: ${business.address}\n`;
+        markdownContent += `- **Address**: ${business.address}\n`;
       }
 
       if (business.phone) {
-        markdown += `- **Phone**: ${business.phone}\n`;
+        markdownContent += `- **Phone**: ${business.phone}\n`;
       }
 
       if (business.rating) {
         const stars = "⭐".repeat(Math.round(business.rating));
-        markdown += `- **Rating**: ${stars} ${business.rating}/5 (${business.totalRatings} reviews)\n`;
+        markdownContent += `- **Rating**: ${stars} ${business.rating}/5 (${business.totalRatings} reviews)\n`;
       }
 
       if (business.website) {
-        markdown += `- **Website**: [${business.website}](${business.website})\n`;
+        markdownContent += `- **Website**: [${business.website}](${business.website})\n`;
       }
       
-      markdown += `\n`;
+      markdownContent += `\n`;
     });
   });
 
   // Save to file
-  fs.writeFileSync(outputPath, markdown);
+  fs.writeFileSync(outputPath, markdownContent);
   console.log(chalk.green(`\n✅ Results exported to: ${outputPath}`));
   
   return outputPath;
@@ -273,4 +290,66 @@ export function formatElapsedTime(startTime: number): string {
   const minutes = Math.floor(elapsed / 60000);
   const seconds = ((elapsed % 60000) / 1000).toFixed(1);
   return `${minutes}m ${seconds}s`;
+}
+
+/**
+ * Logs all found businesses to the console (for 'all' mode)
+ * @param businesses - Array of found businesses
+ * @param elapsedTime - Time taken for the search operation
+ */
+export function logAllBusinesses(
+  businesses: BusinessResult[],
+  elapsedTime?: string,
+): void {
+  if (businesses.length === 0) {
+    console.log(chalk.yellow("\nNo businesses found."));
+    return;
+  }
+
+  console.log(
+    chalk.green.bold(
+      `\n✅ Found ${businesses.length} businesses in total:  `,
+    ),
+  );
+
+  const groupedByType = groupBusinessesByType(businesses);
+
+  Object.entries(groupedByType).forEach(([type, businessList]) => {
+    console.log(
+      chalk.cyan(`\n${formatBusinessType(type)} (${businessList.length}):  `),
+    );
+
+    businessList.forEach((business) => {
+      let status = chalk.gray("Website status unknown");
+      if (business.hasNoWebsite) {
+        status = chalk.red("No website");
+      } else if (business.hasSocialOnly) {
+        status = chalk.yellow("Social media only");
+      } else if (business.website) {
+        status = chalk.green("Has website");
+      }
+
+      console.log(`- ${chalk.white.bold(business.name)} (${status})`);
+      if (business.address) {
+        console.log(`  ${chalk.gray("📍")} ${chalk.gray(business.address)}`);
+      }
+      if (business.phone) {
+        console.log(`  ${chalk.gray("📞")} ${chalk.gray(business.phone)}`);
+      }
+      if (business.rating) {
+        const stars = "⭐".repeat(Math.round(business.rating));
+        console.log(
+          `  ${chalk.gray(stars)} ${chalk.gray(`${business.rating}/5 (${business.totalRatings} reviews)`)}`,
+        );
+      }
+      // In 'all' mode, we always show the website if available
+      if (business.website) {
+        console.log(`  ${chalk.gray("🔗")} ${chalk.gray(business.website)}`);
+      }
+    });
+  });
+
+  if (elapsedTime) {
+    console.log(chalk.blue(`\n• Search completed in: ${elapsedTime}`));
+  }
 }

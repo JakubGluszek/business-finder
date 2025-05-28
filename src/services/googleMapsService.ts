@@ -93,13 +93,13 @@ export class GoogleMapsService {
    * Processes a batch of places to extract details
    * @param places - Array of places to process
    * @param placeType - Type of the places being processed
-   * @param socialMediaDomains - Array of social media domains to check against
-   * @returns Array of businesses without proper websites
+   * @param socialMediaDomainsOrMode - Array of social media domains or the string "all" to skip filtering
+   * @returns Array of businesses without proper websites or all businesses based on mode
    */
   async processBatch(
     places: Array<{ place_id?: string; name?: string }>,
     placeType: string,
-    socialMediaDomains: readonly string[],
+    socialMediaDomainsOrMode: readonly string[] | "all",
   ): Promise<BusinessResult[]> {
     const results: BusinessResult[] = [];
 
@@ -112,7 +112,7 @@ export class GoogleMapsService {
           const businessDetails = extractBusinessDetails(
             placeDetails,
             placeType,
-            socialMediaDomains,
+            socialMediaDomainsOrMode,
           );
 
           if (businessDetails) {
