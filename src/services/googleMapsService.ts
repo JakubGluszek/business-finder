@@ -24,13 +24,13 @@ export class GoogleMapsService {
    * Searches for places near a location based on place type
    * @param location - Geographic coordinates
    * @param radius - Search radius in meters
-   * @param placeType - Type of place to search for
+   * @param placeTypeOrKeyword - Type of place to search for or keyword
    * @returns Array of places found
    */
   async searchNearbyPlaces(
     location: { lat: number; lng: number },
     radius: number,
-    placeType: BusinessType,
+    placeTypeOrKeyword: BusinessType,
   ): Promise<Array<any>> {
     let allPlaces: Array<any> = [];
     let nextPageToken: string | undefined = undefined;
@@ -43,7 +43,8 @@ export class GoogleMapsService {
         const requestParams: any = {
           location,
           radius,
-          type: placeType as any,
+          keyword: placeTypeOrKeyword as string,
+          type: 'car_repair',
           key: this.apiKey,
         };
         if (nextPageToken) {
@@ -67,7 +68,7 @@ export class GoogleMapsService {
       return allPlaces;
     } catch (error) {
       console.error(
-        `Error searching for ${placeType} places:`,
+        `Error searching for ${placeTypeOrKeyword} places:`,
         error instanceof Error ? error.message : String(error),
       );
       return [];
@@ -131,6 +132,7 @@ export class GoogleMapsService {
         try {
           const placeDetails = await this.getPlaceDetails(place.place_id);
           const businessDetails = extractBusinessDetails(
+            place.place_id,
             placeDetails,
             placeType,
             socialMediaDomainsOrMode,

@@ -38,6 +38,7 @@ export interface BusinessResult {
   rating?: number;
   totalRatings?: number;
   latLng?: GeoLocation;
+  place_id?: string;
 }
 
 /**

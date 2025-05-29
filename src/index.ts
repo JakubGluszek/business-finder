@@ -20,7 +20,7 @@ const DEFAULT_CONFIG: SearchOptions = {
   location: { lat: 49.8220544, lng: 19.0319995 }, // Bielsko-Biała, Poland
   radius: 20000, // 20km radius
   apiKey: process.env.GOOGLE_API_KEY,
-  businessTypes: ["car_repair"],
+  businessTypes: ["car_repair", "auto_parts_store", "car_dealer", "car_wash"],
   socialMediaDomains: [
     "facebook.com",
     "instagram.com",
@@ -70,6 +70,7 @@ async function findBusinesses(
 
   const mapsService = new GoogleMapsService(apiKey);
   const foundBusinesses: BusinessResult[] = [];
+  const foundBusinessIds = new Set<string>(); // Keep track of found business Place IDs
 
   try {
     await Promise.all(
@@ -93,19 +94,27 @@ async function findBusinesses(
           for (let i = 0; i < places.length; i += batchSize) {
             const batch = places.slice(i, i + batchSize);
             
-            // In 'all' mode, we don't filter by website status here,
-            // we pass 'all' to processBatch which then skips the socialMediaDomains check.
-            // In 'no-website' mode, it behaves as before.
             const filterModeForBatch = mode === "all" ? "all" : socialMediaDomains;
 
             const results = await mapsService.processBatch(
               batch,
               placeType as string,
-              filterModeForBatch as readonly string[] | "all", // Pass mode or socialMediaDomains for filtering
+              filterModeForBatch as readonly string[] | "all", 
             );
 
             if (results.length > 0) {
-              foundBusinesses.push(...results);
+              results.forEach(business => {
+                // Deduplication based on place_id
+                if (business.place_id && !foundBusinessIds.has(business.place_id)) {
+                  foundBusinesses.push(business);
+                  foundBusinessIds.add(business.place_id);
+                } else if (!business.place_id) {
+                  // If a business somehow has no place_id, add it to avoid losing data,
+                  // though this is unlikely for Google Places results.
+                  foundBusinesses.push(business);
+                  console.warn(chalk.yellow("Warning: Found a business without a place_id:"), business.name);
+                }
+              });
             }
 
             if (i + batchSize < places.length) {

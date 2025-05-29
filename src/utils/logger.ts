@@ -132,12 +132,14 @@ export function groupBusinessesByType(
  * Extracts place details into a standardized format.
  * If socialMediaDomainsOrMode is "all", it includes all businesses.
  * Otherwise, it filters for businesses with no website or only social media presence.
+ * @param placeId - Place ID
  * @param placeDetails - Place details from Google Maps API
  * @param placeType - Type of the place
  * @param socialMediaDomainsOrMode - Array of social media domains to check against, or "all"
  * @returns Formatted business result object or null if filtered out
  */
 export function extractBusinessDetails(
+  placeId: string,
   placeDetails: PlaceDetails,
   placeType: string,
   socialMediaDomainsOrMode: readonly string[] | "all",
@@ -176,6 +178,7 @@ export function extractBusinessDetails(
     phone: formatted_phone_number,
     rating: rating,
     totalRatings: user_ratings_total,
+    place_id: placeId,
   };
 }
 
