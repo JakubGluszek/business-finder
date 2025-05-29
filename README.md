@@ -268,6 +268,145 @@ const businesses = await findBusinessesWithoutWebsitesMultiLocation(apiKey, {
 await saveToIndexedDB(businesses);
 ```
 
+### Backend API with Hono
+
+The package works perfectly on the backend too. Here's a Hono server example:
+
+```typescript
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { 
+  findAllBusinessesMultiLocation, 
+  findBusinessesWithoutWebsitesMultiLocation,
+  MultiLocationSearchOptions 
+} from '@business-finder/core';
+
+const app = new Hono()
+  .use('*', cors())
+  // Search businesses across multiple locations
+  .post('/api/businesses/search', async (c) => {
+    try {
+      const body = await c.req.json();
+      const { locations, businessTypes, mode = 'no-website' } = body;
+      
+      if (!locations || !Array.isArray(locations)) {
+        return c.json({ error: 'Locations array is required' }, 400);
+      }
+
+      const searchOptions: MultiLocationSearchOptions = {
+        locations,
+        businessTypes: businessTypes || ['restaurant', 'cafe', 'gym'],
+        batchSize: 8
+      };
+
+      const results = mode === 'all' 
+        ? await findAllBusinessesMultiLocation(process.env.GOOGLE_MAPS_API_KEY!, searchOptions)
+        : await findBusinessesWithoutWebsitesMultiLocation(process.env.GOOGLE_MAPS_API_KEY!, searchOptions);
+
+      // Group results by location for easier frontend consumption
+      const resultsByLocation = results.reduce((acc, business) => {
+        const location = business.searchLocation || 'unknown';
+        if (!acc[location]) acc[location] = [];
+        acc[location].push(business);
+        return acc;
+      }, {} as Record<string, typeof results>);
+
+      return c.json({
+        success: true,
+        totalResults: results.length,
+        resultsByLocation,
+        allResults: results
+      });
+    } catch (error) {
+      console.error('Search error:', error);
+      return c.json({ 
+        error: 'Search failed', 
+        message: error instanceof Error ? error.message : 'Unknown error' 
+      }, 500);
+    }
+  })
+  // Get businesses for a single location (quick search)
+  .post('/api/businesses/search-single', async (c) => {
+    try {
+      const { lat, lng, radius = 15000, businessTypes = ['restaurant'] } = await c.req.json();
+      
+      if (!lat || !lng) {
+        return c.json({ error: 'Latitude and longitude are required' }, 400);
+      }
+
+      const results = await findBusinessesWithoutWebsitesMultiLocation(
+        process.env.GOOGLE_MAPS_API_KEY!,
+        {
+          locations: [{ location: { lat, lng }, radius, name: 'Search Location' }],
+          businessTypes
+        }
+      );
+
+      return c.json({
+        success: true,
+        count: results.length,
+        businesses: results
+      });
+    } catch (error) {
+      return c.json({ 
+        error: 'Search failed', 
+        message: error instanceof Error ? error.message : 'Unknown error' 
+      }, 500);
+    }
+  })
+  // Health check endpoint
+  .get('/api/health', (c) => {
+    return c.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+export default app;
+```
+
+**Frontend Integration with Backend:**
+
+```typescript
+// Frontend code calling your Hono API
+async function searchBusinesses(selectedLocations: LocationWithRadius[]) {
+  const response = await fetch('/api/businesses/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      locations: selectedLocations,
+      businessTypes: ['restaurant', 'cafe', 'gym'],
+      mode: 'no-website'
+    })
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+    // Save to IndexedDB
+    await saveToIndexedDB(data.allResults);
+    
+    // Update UI with results grouped by location
+    updateMapMarkers(data.resultsByLocation);
+  }
+}
+```
+
+**Environment Setup:**
+
+```bash
+# .env
+GOOGLE_MAPS_API_KEY=your_api_key_here
+```
+
+**Deploy to Cloudflare Workers:**
+
+```typescript
+// worker.ts
+import app from './app';
+
+export default {
+  fetch: app.fetch,
+};
+```
+
 ## Business Types
 
 Supported business types include:
