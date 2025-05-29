@@ -1,25 +1,17 @@
-import "dotenv/config";
-import yargs from "yargs";
-import { hideBin } from "yargs/helpers";
 import { GoogleMapsService } from "./services/googleMapsService.js";
 import {
-  logSearchParameters,
-  logSearchResults,
-  formatElapsedTime,
-  exportToMarkdown,
-  logAllBusinesses,
-} from "./utils/logger.js";
-import { SearchOptions, BusinessResult, GeoLocation } from "./types.js";
-import { fileURLToPath } from "url";
-import chalk from "chalk";
+  SearchOptions,
+  BusinessResult,
+  GeoLocation,
+  BusinessType,
+} from "./types.js";
 
 /**
  * Default configuration for the search
  */
-const DEFAULT_CONFIG: SearchOptions = {
+export const DEFAULT_CONFIG: Required<Omit<SearchOptions, 'apiKey'>> = {
   location: { lat: 49.8220544, lng: 19.0319995 }, // Bielsko-Biała, Poland
   radius: 20000, // 20km radius
-  apiKey: process.env.GOOGLE_API_KEY,
   businessTypes: ["car_repair", "auto_parts_store", "car_dealer", "car_wash"],
   socialMediaDomains: [
     "facebook.com",
@@ -33,226 +25,192 @@ const DEFAULT_CONFIG: SearchOptions = {
 };
 
 /**
- * Searches for businesses based on the specified mode (either without websites or all businesses).
- * @param options - Configuration options from CLI and defaults
- * @param mode - 'no-website' or 'all'
- * @returns Array of business results
+ * BusinessFinder class - Main API for finding businesses
  */
-async function findBusinesses(
-  options: SearchOptions,
-  mode: "no-website" | "all",
-): Promise<BusinessResult[]> {
-  const config = { ...DEFAULT_CONFIG, ...options };
-  const {
-    location,
-    radius,
-    apiKey,
-    businessTypes,
-    socialMediaDomains,
-    batchSize = 5,
-    batchDelay = 200,
-  } = config;
+export class BusinessFinder {
+  private mapsService: GoogleMapsService;
+  private config: Required<SearchOptions>;
 
-  if (!apiKey) {
-    throw new Error("Google Maps API key is required. Set GOOGLE_API_KEY in .env or use --apiKey option.");
-  }
-  if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
-    throw new Error("Location with valid lat and lng is required. Use --lat and --lng options.");
-  }
-  if (!radius || radius <= 0) {
-    throw new Error("Search radius must be a positive number. Use --radius option.");
-  }
-  if (!businessTypes || businessTypes.length === 0) {
-    throw new Error("At least one business type is required. Use --businessTypes option (comma-separated).");
+  constructor(apiKey: string, options: Partial<SearchOptions> = {}) {
+    if (!apiKey) {
+      throw new Error("Google Maps API key is required");
+    }
+
+    this.config = {
+      ...DEFAULT_CONFIG,
+      apiKey,
+      ...options,
+    };
+
+    this.mapsService = new GoogleMapsService(apiKey);
   }
 
-  logSearchParameters(location, radius, businessTypes);
+  /**
+   * Find businesses without proper websites
+   * @param overrides - Optional overrides for search configuration
+   * @returns Array of businesses without proper websites
+   */
+  async findBusinessesWithoutWebsites(
+    overrides: Partial<SearchOptions> = {}
+  ): Promise<BusinessResult[]> {
+    const searchConfig = { ...this.config, ...overrides };
+    return this.searchBusinesses(searchConfig, "no-website");
+  }
 
-  const mapsService = new GoogleMapsService(apiKey);
-  const foundBusinesses: BusinessResult[] = [];
-  const foundBusinessIds = new Set<string>(); // Keep track of found business Place IDs
+  /**
+   * Find all businesses matching the criteria
+   * @param overrides - Optional overrides for search configuration
+   * @returns Array of all businesses found
+   */
+  async findAllBusinesses(
+    overrides: Partial<SearchOptions> = {}
+  ): Promise<BusinessResult[]> {
+    const searchConfig = { ...this.config, ...overrides };
+    return this.searchBusinesses(searchConfig, "all");
+  }
 
-  try {
-    await Promise.all(
-      [...businessTypes].map(async (placeType) => {
-        try {
-          const places = await mapsService.searchNearbyPlaces(
-            location,
-            radius,
-            placeType,
-          );
+  /**
+   * Search for businesses based on configuration and mode
+   * @param options - Search configuration
+   * @param mode - Search mode ('no-website' or 'all')
+   * @returns Array of business results
+   */
+  async searchBusinesses(
+    options: Required<SearchOptions>,
+    mode: "no-website" | "all"
+  ): Promise<BusinessResult[]> {
+    const {
+      location,
+      radius,
+      businessTypes,
+      socialMediaDomains,
+      batchSize,
+      batchDelay,
+    } = options;
 
-          if (places.length === 0) {
-            console.log(`No ${placeType} places found in the area.`);
-            return;
-          }
+    this.validateSearchOptions(options);
 
-          console.log(
-            `Found ${places.length} ${placeType} places. Checking details...`,
-          );
+    const foundBusinesses: BusinessResult[] = [];
+    const foundBusinessIds = new Set<string>();
 
-          for (let i = 0; i < places.length; i += batchSize) {
-            const batch = places.slice(i, i + batchSize);
-            
-            const filterModeForBatch = mode === "all" ? "all" : socialMediaDomains;
-
-            const results = await mapsService.processBatch(
-              batch,
-              placeType as string,
-              filterModeForBatch as readonly string[] | "all", 
+    try {
+      await Promise.all(
+        businessTypes.map(async (placeType) => {
+          try {
+            const places = await this.mapsService.searchNearbyPlaces(
+              location,
+              radius,
+              placeType
             );
 
-            if (results.length > 0) {
-              results.forEach(business => {
-                // Deduplication based on place_id
-                if (business.place_id && !foundBusinessIds.has(business.place_id)) {
-                  foundBusinesses.push(business);
-                  foundBusinessIds.add(business.place_id);
-                } else if (!business.place_id) {
-                  // If a business somehow has no place_id, add it to avoid losing data,
-                  // though this is unlikely for Google Places results.
-                  foundBusinesses.push(business);
-                  console.warn(chalk.yellow("Warning: Found a business without a place_id:"), business.name);
-                }
-              });
+            if (places.length === 0) {
+              return;
             }
 
-            if (i + batchSize < places.length) {
-              await new Promise((resolve) => setTimeout(resolve, batchDelay));
+            for (let i = 0; i < places.length; i += batchSize) {
+              const batch = places.slice(i, i + batchSize);
+              const filterModeForBatch = mode === "all" ? "all" : socialMediaDomains;
+
+              const results = await this.mapsService.processBatch(
+                batch,
+                placeType as string,
+                filterModeForBatch as readonly string[] | "all"
+              );
+
+              if (results.length > 0) {
+                results.forEach((business) => {
+                  if (business.place_id && !foundBusinessIds.has(business.place_id)) {
+                    foundBusinesses.push(business);
+                    foundBusinessIds.add(business.place_id);
+                  } else if (!business.place_id) {
+                    foundBusinesses.push(business);
+                  }
+                });
+              }
+
+              if (i + batchSize < places.length) {
+                await new Promise((resolve) => setTimeout(resolve, batchDelay));
+              }
             }
+          } catch (error) {
+            throw new Error(
+              `Error processing place type ${placeType}: ${error instanceof Error ? error.message : String(error)}`
+            );
           }
-        } catch (error) {
-          console.error(
-            `Error processing place type ${placeType}:`,
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-      }),
-    );
+        })
+      );
 
-    return foundBusinesses;
-  } catch (error) {
-    console.error(
-      `Error in findBusinesses (${mode} mode):`,
-      error instanceof Error ? error.message : String(error),
-    );
-    throw error;
+      return foundBusinesses;
+    } catch (error) {
+      throw new Error(
+        `Error in searchBusinesses (${mode} mode): ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Update the configuration
+   * @param updates - Partial configuration updates
+   */
+  updateConfig(updates: Partial<SearchOptions>): void {
+    this.config = { ...this.config, ...updates };
+  }
+
+  /**
+   * Get current configuration
+   * @returns Current search configuration
+   */
+  getConfig(): Required<SearchOptions> {
+    return { ...this.config };
+  }
+
+  /**
+   * Validate search options
+   * @param options - Search options to validate
+   */
+  private validateSearchOptions(options: Required<SearchOptions>): void {
+    const { location, radius, businessTypes } = options;
+
+    if (!location || typeof location.lat !== "number" || typeof location.lng !== "number") {
+      throw new Error("Location with valid lat and lng is required");
+    }
+    if (!radius || radius <= 0) {
+      throw new Error("Search radius must be a positive number");
+    }
+    if (!businessTypes || businessTypes.length === 0) {
+      throw new Error("At least one business type is required");
+    }
   }
 }
 
 /**
- * Main function to parse CLI arguments and run the search
+ * Standalone function for finding businesses without websites
+ * @param apiKey - Google Maps API key
+ * @param options - Search options
+ * @returns Array of businesses without proper websites
  */
-async function main(): Promise<void> {
-  const yargsInstance = yargs(hideBin(process.argv));
-
-  const argv = await yargsInstance
-    .option("mode", {
-      alias: "m",
-      type: "string",
-      description: "Search mode: 'no-website' or 'all'",
-      choices: ["no-website", "all"],
-      default: "no-website",
-    })
-    .option("lat", {
-      type: "number",
-      description: "Latitude for search center",
-      default: DEFAULT_CONFIG.location?.lat,
-    })
-    .option("lng", {
-      type: "number",
-      description: "Longitude for search center",
-      default: DEFAULT_CONFIG.location?.lng,
-    })
-    .option("radius", {
-      alias: "r",
-      type: "number",
-      description: "Search radius in meters",
-      default: DEFAULT_CONFIG.radius,
-    })
-    .option("businessTypes", {
-      alias: "t",
-      type: "string",
-      description: "Comma-separated list of business types (e.g., 'car_repair,restaurant')",
-      default: DEFAULT_CONFIG.businessTypes?.join(",") || "restaurant", // Default to restaurant if not in default config
-    })
-    .option("apiKey", {
-      type: "string",
-      description: "Google Maps API Key",
-      default: process.env.GOOGLE_API_KEY,
-    })
-    .option("socialMediaDomains", {
-        type: "string",
-        description: "Comma-separated list of social media domains to check against for 'no-website' mode",
-        default: DEFAULT_CONFIG.socialMediaDomains?.join(","),
-    })
-    .option("batchSize", {
-        type: "number",
-        description: "Number of place details to fetch in a single batch",
-        default: DEFAULT_CONFIG.batchSize,
-    })
-    .option("batchDelay", {
-        type: "number",
-        description: "Delay in milliseconds between batches",
-        default: DEFAULT_CONFIG.batchDelay,
-    })
-    .option("export", {
-        alias: "e",
-        type: "boolean",
-        description: "Export results to a Markdown file",
-        default: process.env.EXPORT_RESULTS === 'true' || false,
-    })
-    .help()
-    .alias("help", "h")
-    .parseAsync();
-
-  // Check if any actual arguments were passed by the user
-  // hideBin(process.argv) gives us the arguments after the script name
-  if (hideBin(process.argv).length === 0) {
-    console.log(chalk.yellow("No command-line arguments provided. Displaying help:\n"));
-    yargsInstance.showHelp(); // Display the help screen
-    return; // Exit without running the main logic
-  }
-
-  try {
-    const startTime = Date.now();
-
-    const searchOptions: SearchOptions = {
-      location: { lat: argv.lat!, lng: argv.lng! } as GeoLocation,
-      radius: argv.radius,
-      apiKey: argv.apiKey,
-      businessTypes: argv.businessTypes?.split(",").map(bt => bt.trim()) || [],
-      socialMediaDomains: argv.socialMediaDomains?.split(",").map(d => d.trim()) || [],
-      batchSize: argv.batchSize,
-      batchDelay: argv.batchDelay,
-    };
-
-    const businesses = await findBusinesses(searchOptions, argv.mode as "no-website" | "all");
-    const elapsedTime = formatElapsedTime(startTime);
-
-    if (argv.mode === "no-website") {
-      logSearchResults(businesses, elapsedTime);
-    } else {
-      // Assuming you'll add a logAllBusinesses function or adapt logSearchResults
-      logAllBusinesses(businesses, elapsedTime);
-    }
-
-    if (argv.export && businesses.length > 0) {
-      exportToMarkdown(businesses, elapsedTime, argv.mode); // Pass mode to export function
-    }
-  } catch (error) {
-    console.error(
-      chalk.red("Error running search:"), // Added chalk for consistency
-      error instanceof Error ? error.message : String(error),
-    );
-    process.exit(1);
-  }
+export async function findBusinessesWithoutWebsites(
+  apiKey: string,
+  options: SearchOptions
+): Promise<BusinessResult[]> {
+  const finder = new BusinessFinder(apiKey, options);
+  return finder.findBusinessesWithoutWebsites();
 }
 
-// Run the script
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+/**
+ * Standalone function for finding all businesses
+ * @param apiKey - Google Maps API key
+ * @param options - Search options
+ * @returns Array of all businesses found
+ */
+export async function findAllBusinesses(
+  apiKey: string,
+  options: SearchOptions
+): Promise<BusinessResult[]> {
+  const finder = new BusinessFinder(apiKey, options);
+  return finder.findAllBusinesses();
 }
 
-// Export functions for potential programmatic use (though main CLI is primary)
-export { findBusinesses, main };
+// Re-export types and services for convenience
+export * from "./types.js";
+export { GoogleMapsService } from "./services/googleMapsService.js";

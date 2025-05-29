@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { Client } from "@googlemaps/google-maps-services-js";
 import { BusinessResult, PlaceDetails, BusinessType } from "../types.js";
-import { extractBusinessDetails } from "../utils/logger.js";
 
 /**
  * Service for interacting with Google Maps API
@@ -67,11 +66,9 @@ export class GoogleMapsService {
 
       return allPlaces;
     } catch (error) {
-      console.error(
-        `Error searching for ${placeTypeOrKeyword} places:`,
-        error instanceof Error ? error.message : String(error),
+      throw new Error(
+        `Error searching for ${placeTypeOrKeyword} places: ${error instanceof Error ? error.message : String(error)}`
       );
-      return [];
     }
   }
 
@@ -103,11 +100,9 @@ export class GoogleMapsService {
 
       return response.data.result as PlaceDetails;
     } catch (error) {
-      console.error(
-        `Error fetching details for place ${placeId}:`,
-        error instanceof Error ? error.message : String(error),
+      throw new Error(
+        `Error fetching details for place ${placeId}: ${error instanceof Error ? error.message : String(error)}`
       );
-      return {};
     }
   }
 
@@ -131,7 +126,7 @@ export class GoogleMapsService {
 
         try {
           const placeDetails = await this.getPlaceDetails(place.place_id);
-          const businessDetails = extractBusinessDetails(
+          const businessDetails = this.extractBusinessDetails(
             place.place_id,
             placeDetails,
             placeType,
@@ -142,14 +137,69 @@ export class GoogleMapsService {
             results.push(businessDetails);
           }
         } catch (error) {
-          console.error(
-            `Error processing place ${place.name || place.place_id}:`,
-            error instanceof Error ? error.message : String(error),
+          throw new Error(
+            `Error processing place ${place.name || place.place_id}: ${error instanceof Error ? error.message : String(error)}`
           );
         }
       }),
     );
 
     return results;
+  }
+
+  /**
+   * Extracts place details into a standardized format.
+   * If socialMediaDomainsOrMode is "all", it includes all businesses.
+   * Otherwise, it filters for businesses with no website or only social media presence.
+   * @param placeId - Place ID
+   * @param placeDetails - Place details from Google Maps API
+   * @param placeType - Type of the place
+   * @param socialMediaDomainsOrMode - Array of social media domains to check against, or "all"
+   * @returns Formatted business result object or null if filtered out
+   */
+  private extractBusinessDetails(
+    placeId: string,
+    placeDetails: PlaceDetails,
+    placeType: string,
+    socialMediaDomainsOrMode: readonly string[] | "all",
+  ): BusinessResult | null {
+    const {
+      name,
+      website,
+      formatted_address,
+      formatted_phone_number,
+      rating,
+      user_ratings_total,
+      geometry,
+    } = placeDetails;
+
+    if (!name) return null;
+
+    const hasWebsite = Boolean(website);
+    let hasSocialMediaOnly = false;
+
+    if (socialMediaDomainsOrMode !== "all") {
+      hasSocialMediaOnly =
+        hasWebsite &&
+        socialMediaDomainsOrMode.some((domain) => website?.includes(domain));
+
+      // Only include businesses with no website or just social media
+      if (hasWebsite && !hasSocialMediaOnly) return null;
+    }
+    // If mode is "all", we don't filter based on website status, so we proceed.
+
+    return {
+      name,
+      type: placeType,
+      hasNoWebsite: !hasWebsite,
+      hasSocialOnly: hasSocialMediaOnly,
+      website: website || undefined,
+      address: formatted_address,
+      phone: formatted_phone_number,
+      rating: rating,
+      totalRatings: user_ratings_total,
+      latLng: geometry?.location,
+      place_id: placeId,
+    };
   }
 }

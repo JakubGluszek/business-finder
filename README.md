@@ -1,125 +1,208 @@
-# Business Finder
+# @business-finder/core
 
-A TypeScript application to find businesses without proper websites using the Google Maps API. This tool helps identify potential clients for web development services.
+A TypeScript library for finding businesses without proper websites using the Google Maps API. Perfect for identifying potential clients for web development services or market research.
 
 ## Features
 
-- Search for businesses by type within a specified radius
-- Identify businesses with:
+- 🔍 Search for businesses by type within a specified radius
+- 🌐 Identify businesses with no website or only social media presence
+- 📍 Get detailed place information including ratings, reviews, and contact details
+- ⚡ Configurable search parameters and batch processing
+- 🔧 TypeScript support with full type definitions
+- 📦 Clean API suitable for React/Vue/Angular applications
 
-  - No website at all
-  - Only social media presence
-
-- Detailed place information including:
-
-  - Name and address
-  - Phone number
-  - Ratings and reviews
-  - Website information
-
-- Colorful console output for easy reading
-- Configurable search parameters
-
-## Setup
-
-1. Clone this repository
-2. Install dependencies:
-
-   ```bash
-   pnpm install
-   ```
-
-3. Create a `.env` file in the root directory with your Google Maps API key:
-
-   ```
-   GOOGLE_API_KEY=your_api_key_here
-   EXPORT_RESULTS=false
-   ```
-
-4. Build the TypeScript code:
-
-   ```bash
-   pnpm run build
-   ```
-
-## Usage
-
-Run the application using the CLI:
+## Installation
 
 ```bash
-node dist/index.js <command> [options]
+npm install @business-finder/core
+# or
+yarn add @business-finder/core
+# or
+pnpm add @business-finder/core
 ```
 
-Or, during development:
+## Quick Start
 
-```bash
-tsx src/index.ts <command> [options]
-# or using ts-node-esm if you aliased it or have it in your path
-# ts-node-esm src/index.ts <command> [options]
+```typescript
+import { BusinessFinder } from '@business-finder/core';
+
+const finder = new BusinessFinder('YOUR_GOOGLE_MAPS_API_KEY', {
+  location: { lat: 49.8220544, lng: 19.0319995 }, // Bielsko-Biała, Poland
+  radius: 20000, // 20km radius
+  businessTypes: ['restaurant', 'cafe', 'bar']
+});
+
+// Find businesses without websites
+const businessesWithoutWebsites = await finder.findBusinessesWithoutWebsites();
+
+// Find all businesses (regardless of website status)
+const allBusinesses = await finder.findAllBusinesses();
+
+console.log('Found', businessesWithoutWebsites.length, 'businesses without proper websites');
 ```
 
-**Note:** Ensure your `.env` file is set up with `GOOGLE_API_KEY` or provide it via the `--apiKey` option.
+## API Reference
 
-### Commands and Options
+### BusinessFinder Class
 
-*   **`--mode <mode>` (or `-m <mode>`)**: Specifies the search mode.
-    *   `no-website` (default): Finds businesses with no website or only a social media presence.
-    *   `all`: Finds all businesses matching the criteria, regardless of website status.
-*   **`--lat <latitude>`**: Latitude for the search center (e.g., `49.8220544`). Defaults to Bielsko-Biała, Poland.
-*   **`--lng <longitude>`**: Longitude for the search center (e.g., `19.0319995`). Defaults to Bielsko-Biała, Poland.
-*   **`--radius <meters>` (or `-r <meters>`)**: Search radius in meters (e.g., `20000` for 20km). Defaults to 20000.
-*   **`--businessTypes <types>` (or `-t <types>`)**: Comma-separated list of business types (e.g., `car_repair,restaurant`). Defaults to `restaurant`.
-*   **`--apiKey <key>`**: Your Google Maps API key. Overrides the key in the `.env` file.
-*   **`--socialMediaDomains <domains>`**: Comma-separated list of social media domains (e.g., `facebook.com,instagram.com`) for the `no-website` mode. Defaults to a predefined list.
-*   **`--batchSize <number>`**: Number of place details to fetch concurrently. Defaults to 5.
-*   **`--batchDelay <milliseconds>`**: Delay between batches of place detail requests. Defaults to 200ms.
-*   **`--export` (or `-e`)**: Export results to a Markdown file in the `results/` directory. Defaults to `false` (or the value of `EXPORT_RESULTS` in `.env`).
-*   **`--help` (or `-h`)**: Show help information.
+The main class for finding businesses.
 
-### Examples
+```typescript
+const finder = new BusinessFinder(apiKey: string, options?: Partial<SearchOptions>);
+```
 
-1.  **Find restaurants and cafes without websites in a 5km radius around a specific location:**
-    ```bash
-    node dist/index.js --lat 50.0647 --lng 19.9450 --radius 5000 --businessTypes "restaurant,cafe" --mode no-website
-    ```
+#### Methods
 
-2.  **Find all car repair shops within a 20km radius of Bielsko-Biała (using defaults) and export results:**
-    ```bash
-    node dist/index.js --businessTypes "car_repair" --mode all --export
-    ```
+- `findBusinessesWithoutWebsites(overrides?: Partial<SearchOptions>): Promise<BusinessResult[]>`
+- `findAllBusinesses(overrides?: Partial<SearchOptions>): Promise<BusinessResult[]>`
+- `updateConfig(updates: Partial<SearchOptions>): void`
+- `getConfig(): Required<SearchOptions>`
 
-3.  **Using development environment to find all gyms with a custom API key:**
-    ```bash
-    tsx src/index.ts -t gym -m all --apiKey YOUR_GOOGLE_API_KEY_HERE
-    ```
+### Standalone Functions
 
-### Modifying Default Search Parameters
+```typescript
+import { findBusinessesWithoutWebsites, findAllBusinesses } from '@business-finder/core';
 
-While most parameters are now configurable via CLI options, some base defaults (like the default location if none is provided, or the list of social media domains) are still in `src/index.ts` in the `DEFAULT_CONFIG` object. You can modify these there if needed.
+// Find businesses without websites
+const businesses = await findBusinessesWithoutWebsites('YOUR_API_KEY', {
+  location: { lat: 40.7128, lng: -74.0060 },
+  radius: 10000,
+  businessTypes: ['restaurant']
+});
 
-## Project Structure
+// Find all businesses
+const allBusinesses = await findAllBusinesses('YOUR_API_KEY', options);
+```
 
-- `src/index.ts` - Main application entry point
-- `src/const.ts` - Constants and configuration values
-- `src/types/index.ts` - TypeScript type definitions
-- `src/services/googleMapsService.ts` - Google Maps API service
-- `src/utils/logger.ts` - Logging and formatting utilities
+### Configuration Options
 
-## Development
+```typescript
+interface SearchOptions {
+  location?: { lat: number; lng: number };
+  radius?: number; // in meters
+  apiKey?: string;
+  businessTypes?: BusinessType[];
+  socialMediaDomains?: string[];
+  batchSize?: number;
+  batchDelay?: number; // in milliseconds
+}
+```
 
-Run in development mode with live reload:
+### Business Result
 
-```bash
-pnpm run dev
-# or, for more direct control if you prefer tsx:
-# tsx watch src/index.ts -- --your-cli-options-here
+```typescript
+interface BusinessResult {
+  name: string;
+  type: string;
+  hasNoWebsite: boolean;
+  hasSocialOnly: boolean;
+  website?: string;
+  address?: string;
+  phone?: string;
+  rating?: number;
+  totalRatings?: number;
+  latLng?: { lat: number; lng: number };
+  place_id?: string;
+}
+```
+
+## Business Types
+
+Supported business types include:
+- `restaurant`, `cafe`, `bar`
+- `car_repair`, `car_dealer`, `car_wash`
+- `gym`, `beauty_salon`, `hair_care`
+- `clothing_store`, `shoe_store`, `jewelry_store`
+- `dentist`, `doctor`, `veterinary_care`
+- And many more...
+
+See the full list in the `PlaceType2` type definition.
+
+## Advanced Usage
+
+### React Example
+
+```typescript
+import React, { useState } from 'react';
+import { BusinessFinder, BusinessResult } from '@business-finder/core';
+
+function BusinessSearch() {
+  const [businesses, setBusinesses] = useState<BusinessResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  const searchBusinesses = async () => {
+    setLoading(true);
+    try {
+      const finder = new BusinessFinder(process.env.REACT_APP_GOOGLE_MAPS_API_KEY!, {
+        location: { lat: 40.7128, lng: -74.0060 }, // NYC
+        radius: 15000,
+        businessTypes: ['restaurant', 'cafe']
+      });
+      
+      const results = await finder.findBusinessesWithoutWebsites();
+      setBusinesses(results);
+    } catch (error) {
+      console.error('Search failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  return (
+    <div>
+      <button onClick={searchBusinesses} disabled={loading}>
+        {loading ? 'Searching...' : 'Search Businesses'}
+      </button>
+      
+      {businesses.map(business => (
+        <div key={business.place_id}>
+          <h3>{business.name}</h3>
+          <p>{business.address}</p>
+          <p>Rating: {business.rating}/5 ({business.totalRatings} reviews)</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Custom Configuration
+
+```typescript
+const finder = new BusinessFinder('YOUR_API_KEY', {
+  location: { lat: 52.5200, lng: 13.4050 }, // Berlin
+  radius: 25000, // 25km
+  businessTypes: ['restaurant', 'cafe', 'bar', 'night_club'],
+  socialMediaDomains: ['facebook.com', 'instagram.com', 'twitter.com'],
+  batchSize: 10, // Process 10 places at once
+  batchDelay: 300 // Wait 300ms between batches
+});
+
+// Search with temporary overrides
+const results = await finder.findBusinessesWithoutWebsites({
+  radius: 10000, // Override to 10km for this search
+  businessTypes: ['gym', 'beauty_salon'] // Override business types
+});
 ```
 
 ## Requirements
 
 - Node.js 18 or higher
 - Google Maps API key with Places API enabled
+- TypeScript 5.2+ (for development)
+
+## Setup Google Maps API
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the "Places API"
+4. Create credentials (API key)
+5. (Optional) Restrict the API key to your domains/IP addresses
 
 ## License
 
 MIT
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
