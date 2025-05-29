@@ -111,12 +111,14 @@ export class GoogleMapsService {
    * @param places - Array of places to process
    * @param placeType - Type of the places being processed
    * @param socialMediaDomainsOrMode - Array of social media domains or the string "all" to skip filtering
+   * @param searchLocationName - Optional name of the search location
    * @returns Array of businesses without proper websites or all businesses based on mode
    */
   async processBatch(
     places: Array<{ place_id?: string; name?: string }>,
     placeType: string,
     socialMediaDomainsOrMode: readonly string[] | "all",
+    searchLocationName?: string,
   ): Promise<BusinessResult[]> {
     const results: BusinessResult[] = [];
 
@@ -131,6 +133,7 @@ export class GoogleMapsService {
             placeDetails,
             placeType,
             socialMediaDomainsOrMode,
+            searchLocationName,
           );
 
           if (businessDetails) {
@@ -155,6 +158,7 @@ export class GoogleMapsService {
    * @param placeDetails - Place details from Google Maps API
    * @param placeType - Type of the place
    * @param socialMediaDomainsOrMode - Array of social media domains to check against, or "all"
+   * @param searchLocationName - Optional name of the search location this result came from
    * @returns Formatted business result object or null if filtered out
    */
   private extractBusinessDetails(
@@ -162,6 +166,7 @@ export class GoogleMapsService {
     placeDetails: PlaceDetails,
     placeType: string,
     socialMediaDomainsOrMode: readonly string[] | "all",
+    searchLocationName?: string,
   ): BusinessResult | null {
     const {
       name,
@@ -200,6 +205,7 @@ export class GoogleMapsService {
       totalRatings: user_ratings_total,
       latLng: geometry?.location,
       place_id: placeId,
+      searchLocation: searchLocationName,
     };
   }
 }

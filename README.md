@@ -7,6 +7,7 @@ A TypeScript library for finding businesses without proper websites using the Go
 - 🔍 Search for businesses by type within a specified radius
 - 🌐 Identify businesses with no website or only social media presence
 - 📍 Get detailed place information including ratings, reviews, and contact details
+- 🚀 **Multi-location concurrent search** - Search multiple cities simultaneously
 - ⚡ Configurable search parameters and batch processing
 - 🔧 TypeScript support with full type definitions
 - 📦 Clean API suitable for React/Vue/Angular applications
@@ -22,6 +23,8 @@ pnpm add @business-finder/core
 ```
 
 ## Quick Start
+
+### Single Location Search
 
 ```typescript
 import { BusinessFinder } from '@business-finder/core';
@@ -41,11 +44,72 @@ const allBusinesses = await finder.findAllBusinesses();
 console.log('Found', businessesWithoutWebsites.length, 'businesses without proper websites');
 ```
 
+### Multi-Location Search (Recommended)
+
+```typescript
+import { findAllBusinessesMultiLocation } from '@business-finder/core';
+
+// Search multiple cities concurrently with different radius for each
+const results = await findAllBusinessesMultiLocation('YOUR_GOOGLE_MAPS_API_KEY', {
+  locations: [
+    { 
+      location: { lat: 50.0647, lng: 19.9450 }, // Krakow
+      radius: 15000, // 15km
+      name: 'Krakow'
+    },
+    { 
+      location: { lat: 52.2297, lng: 21.0122 }, // Warsaw
+      radius: 25000, // 25km  
+      name: 'Warsaw'
+    },
+    { 
+      location: { lat: 54.3520, lng: 18.6466 }, // Gdansk
+      radius: 10000, // 10km
+      name: 'Gdansk'
+    }
+  ],
+  businessTypes: ['restaurant', 'cafe', 'bar'],
+  batchSize: 10
+});
+
+// Results include which city each business was found in
+results.forEach(business => {
+  console.log(`${business.name} in ${business.searchLocation}`);
+});
+```
+
 ## API Reference
 
-### BusinessFinder Class
+### Multi-Location Functions (Recommended)
 
-The main class for finding businesses.
+Perfect for searching multiple cities at once:
+
+```typescript
+import { 
+  findAllBusinessesMultiLocation, 
+  findBusinessesWithoutWebsitesMultiLocation 
+} from '@business-finder/core';
+
+// Find all businesses across multiple locations
+const allBusinesses = await findAllBusinessesMultiLocation('YOUR_API_KEY', {
+  locations: [
+    { location: { lat: 40.7128, lng: -74.0060 }, radius: 20000, name: 'NYC' },
+    { location: { lat: 34.0522, lng: -118.2437 }, radius: 15000, name: 'LA' }
+  ],
+  businessTypes: ['restaurant', 'gym']
+});
+
+// Find businesses without websites across multiple locations
+const businessesWithoutWebsites = await findBusinessesWithoutWebsitesMultiLocation('YOUR_API_KEY', {
+  locations: [
+    { location: { lat: 40.7128, lng: -74.0060 }, radius: 20000, name: 'NYC' },
+    { location: { lat: 34.0522, lng: -118.2437 }, radius: 15000, name: 'LA' }
+  ],
+  businessTypes: ['restaurant', 'cafe']
+});
+```
+
+### BusinessFinder Class
 
 ```typescript
 const finder = new BusinessFinder(apiKey: string, options?: Partial<SearchOptions>);
@@ -55,26 +119,13 @@ const finder = new BusinessFinder(apiKey: string, options?: Partial<SearchOption
 
 - `findBusinessesWithoutWebsites(overrides?: Partial<SearchOptions>): Promise<BusinessResult[]>`
 - `findAllBusinesses(overrides?: Partial<SearchOptions>): Promise<BusinessResult[]>`
+- `searchMultipleLocations(options: MultiLocationSearchOptions, mode: 'no-website' | 'all'): Promise<BusinessResult[]>`
 - `updateConfig(updates: Partial<SearchOptions>): void`
 - `getConfig(): Required<SearchOptions>`
 
-### Standalone Functions
-
-```typescript
-import { findBusinessesWithoutWebsites, findAllBusinesses } from '@business-finder/core';
-
-// Find businesses without websites
-const businesses = await findBusinessesWithoutWebsites('YOUR_API_KEY', {
-  location: { lat: 40.7128, lng: -74.0060 },
-  radius: 10000,
-  businessTypes: ['restaurant']
-});
-
-// Find all businesses
-const allBusinesses = await findAllBusinesses('YOUR_API_KEY', options);
-```
-
 ### Configuration Options
+
+#### Single Location Search
 
 ```typescript
 interface SearchOptions {
@@ -85,6 +136,25 @@ interface SearchOptions {
   socialMediaDomains?: string[];
   batchSize?: number;
   batchDelay?: number; // in milliseconds
+}
+```
+
+#### Multi-Location Search
+
+```typescript
+interface MultiLocationSearchOptions {
+  locations: LocationWithRadius[];
+  apiKey?: string;
+  businessTypes?: BusinessType[];
+  socialMediaDomains?: string[];
+  batchSize?: number;
+  batchDelay?: number;
+}
+
+interface LocationWithRadius {
+  location: { lat: number; lng: number };
+  radius: number;
+  name?: string; // Optional name for the location
 }
 ```
 
@@ -103,7 +173,99 @@ interface BusinessResult {
   totalRatings?: number;
   latLng?: { lat: number; lng: number };
   place_id?: string;
+  searchLocation?: string; // Which location this result came from
 }
+```
+
+## Advanced Usage
+
+### React Example with Multiple Cities
+
+```typescript
+import React, { useState } from 'react';
+import { findAllBusinessesMultiLocation, BusinessResult } from '@business-finder/core';
+
+function MultiCityBusinessSearch() {
+  const [businesses, setBusinesses] = useState<BusinessResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  const searchBusinesses = async () => {
+    setLoading(true);
+    try {
+      const results = await findAllBusinessesMultiLocation(
+        process.env.REACT_APP_GOOGLE_MAPS_API_KEY!,
+        {
+          locations: [
+            { location: { lat: 40.7128, lng: -74.0060 }, radius: 15000, name: 'New York' },
+            { location: { lat: 34.0522, lng: -118.2437 }, radius: 20000, name: 'Los Angeles' },
+            { location: { lat: 41.8781, lng: -87.6298 }, radius: 18000, name: 'Chicago' }
+          ],
+          businessTypes: ['restaurant', 'cafe', 'bar'],
+          batchSize: 8
+        }
+      );
+      
+      setBusinesses(results);
+    } catch (error) {
+      console.error('Search failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Group businesses by city
+  const businessesByCity = businesses.reduce((acc, business) => {
+    const city = business.searchLocation || 'Unknown';
+    if (!acc[city]) acc[city] = [];
+    acc[city].push(business);
+    return acc;
+  }, {} as Record<string, BusinessResult[]>);
+  
+  return (
+    <div>
+      <button onClick={searchBusinesses} disabled={loading}>
+        {loading ? 'Searching...' : 'Search Multiple Cities'}
+      </button>
+      
+      {Object.entries(businessesByCity).map(([city, cityBusinesses]) => (
+        <div key={city}>
+          <h2>{city} ({cityBusinesses.length} businesses)</h2>
+          {cityBusinesses.map(business => (
+            <div key={business.place_id}>
+              <h3>{business.name}</h3>
+              <p>{business.address}</p>
+              <p>Rating: {business.rating}/5 ({business.totalRatings} reviews)</p>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Map Integration Example
+
+Perfect for your use case with interactive maps:
+
+```typescript
+import { findBusinessesWithoutWebsitesMultiLocation } from '@business-finder/core';
+
+// User selects cities on map with custom radius for each
+const selectedLocations = [
+  { location: { lat: 50.0647, lng: 19.9450 }, radius: 12000, name: 'Krakow' },
+  { location: { lat: 51.1079, lng: 17.0385 }, radius: 8000, name: 'Wroclaw' },
+  { location: { lat: 52.4064, lng: 16.9252 }, radius: 6000, name: 'Poznan' }
+];
+
+// Fetch businesses for all selected locations
+const businesses = await findBusinessesWithoutWebsitesMultiLocation(apiKey, {
+  locations: selectedLocations,
+  businessTypes: ['restaurant', 'cafe', 'gym', 'beauty_salon']
+});
+
+// Save to IndexedDB
+await saveToIndexedDB(businesses);
 ```
 
 ## Business Types
@@ -117,73 +279,6 @@ Supported business types include:
 - And many more...
 
 See the full list in the `PlaceType2` type definition.
-
-## Advanced Usage
-
-### React Example
-
-```typescript
-import React, { useState } from 'react';
-import { BusinessFinder, BusinessResult } from '@business-finder/core';
-
-function BusinessSearch() {
-  const [businesses, setBusinesses] = useState<BusinessResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  
-  const searchBusinesses = async () => {
-    setLoading(true);
-    try {
-      const finder = new BusinessFinder(process.env.REACT_APP_GOOGLE_MAPS_API_KEY!, {
-        location: { lat: 40.7128, lng: -74.0060 }, // NYC
-        radius: 15000,
-        businessTypes: ['restaurant', 'cafe']
-      });
-      
-      const results = await finder.findBusinessesWithoutWebsites();
-      setBusinesses(results);
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  return (
-    <div>
-      <button onClick={searchBusinesses} disabled={loading}>
-        {loading ? 'Searching...' : 'Search Businesses'}
-      </button>
-      
-      {businesses.map(business => (
-        <div key={business.place_id}>
-          <h3>{business.name}</h3>
-          <p>{business.address}</p>
-          <p>Rating: {business.rating}/5 ({business.totalRatings} reviews)</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-```
-
-### Custom Configuration
-
-```typescript
-const finder = new BusinessFinder('YOUR_API_KEY', {
-  location: { lat: 52.5200, lng: 13.4050 }, // Berlin
-  radius: 25000, // 25km
-  businessTypes: ['restaurant', 'cafe', 'bar', 'night_club'],
-  socialMediaDomains: ['facebook.com', 'instagram.com', 'twitter.com'],
-  batchSize: 10, // Process 10 places at once
-  batchDelay: 300 // Wait 300ms between batches
-});
-
-// Search with temporary overrides
-const results = await finder.findBusinessesWithoutWebsites({
-  radius: 10000, // Override to 10km for this search
-  businessTypes: ['gym', 'beauty_salon'] // Override business types
-});
-```
 
 ## Requirements
 

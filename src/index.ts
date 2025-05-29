@@ -1,9 +1,8 @@
 import { GoogleMapsService } from "./services/googleMapsService.js";
 import {
   SearchOptions,
+  MultiLocationSearchOptions,
   BusinessResult,
-  GeoLocation,
-  BusinessType,
 } from "./types.js";
 
 /**
@@ -67,6 +66,89 @@ export class BusinessFinder {
   ): Promise<BusinessResult[]> {
     const searchConfig = { ...this.config, ...overrides };
     return this.searchBusinesses(searchConfig, "all");
+  }
+
+  /**
+   * Search for businesses across multiple locations asynchronously
+   * @param options - Multi-location search options
+   * @param mode - Search mode ('no-website' or 'all')
+   * @returns Array of business results from all locations
+   */
+  async searchMultipleLocations(
+    options: MultiLocationSearchOptions,
+    mode: "no-website" | "all"
+  ): Promise<BusinessResult[]> {
+    const {
+      locations,
+      businessTypes = this.config.businessTypes,
+      socialMediaDomains = this.config.socialMediaDomains,
+      batchSize = this.config.batchSize,
+      batchDelay = this.config.batchDelay,
+    } = options;
+
+    if (!locations || locations.length === 0) {
+      throw new Error("At least one location is required");
+    }
+
+    const allResults: BusinessResult[] = [];
+    const foundBusinessIds = new Set<string>();
+
+    // Search all locations concurrently
+    await Promise.all(
+      locations.map(async (locationWithRadius) => {
+        const { location, radius, name: locationName } = locationWithRadius;
+        
+        // Search all business types for this location concurrently
+        await Promise.all(
+          businessTypes.map(async (placeType) => {
+            try {
+              const places = await this.mapsService.searchNearbyPlaces(
+                location,
+                radius,
+                placeType
+              );
+
+              if (places.length === 0) {
+                return;
+              }
+
+              for (let i = 0; i < places.length; i += batchSize) {
+                const batch = places.slice(i, i + batchSize);
+                const filterModeForBatch = mode === "all" ? "all" : socialMediaDomains;
+
+                const results = await this.mapsService.processBatch(
+                  batch,
+                  placeType as string,
+                  filterModeForBatch as readonly string[] | "all",
+                  locationName
+                );
+
+                if (results.length > 0) {
+                  results.forEach((business) => {
+                    if (business.place_id && !foundBusinessIds.has(business.place_id)) {
+                      allResults.push(business);
+                      foundBusinessIds.add(business.place_id);
+                    } else if (!business.place_id) {
+                      allResults.push(business);
+                    }
+                  });
+                }
+
+                if (i + batchSize < places.length) {
+                  await new Promise((resolve) => setTimeout(resolve, batchDelay));
+                }
+              }
+            } catch (error) {
+              throw new Error(
+                `Error processing place type ${placeType} for location ${locationName || 'unnamed'}: ${error instanceof Error ? error.message : String(error)}`
+              );
+            }
+          })
+        );
+      })
+    );
+
+    return allResults;
   }
 
   /**
@@ -209,6 +291,34 @@ export async function findAllBusinesses(
 ): Promise<BusinessResult[]> {
   const finder = new BusinessFinder(apiKey, options);
   return finder.findAllBusinesses();
+}
+
+/**
+ * Standalone function for finding businesses without websites across multiple locations
+ * @param apiKey - Google Maps API key
+ * @param options - Multi-location search options
+ * @returns Array of businesses without proper websites from all locations
+ */
+export async function findBusinessesWithoutWebsitesMultiLocation(
+  apiKey: string,
+  options: MultiLocationSearchOptions
+): Promise<BusinessResult[]> {
+  const finder = new BusinessFinder(apiKey);
+  return finder.searchMultipleLocations(options, "no-website");
+}
+
+/**
+ * Standalone function for finding all businesses across multiple locations
+ * @param apiKey - Google Maps API key
+ * @param options - Multi-location search options
+ * @returns Array of all businesses found from all locations
+ */
+export async function findAllBusinessesMultiLocation(
+  apiKey: string,
+  options: MultiLocationSearchOptions
+): Promise<BusinessResult[]> {
+  const finder = new BusinessFinder(apiKey);
+  return finder.searchMultipleLocations(options, "all");
 }
 
 // Re-export types and services for convenience

@@ -7,11 +7,32 @@ export interface GeoLocation {
 }
 
 /**
+ * Location with its own radius setting
+ */
+export interface LocationWithRadius {
+  location: GeoLocation;
+  radius: number;
+  name?: string; // Optional name for the location (e.g., "Warsaw", "Krakow")
+}
+
+/**
  * Search options for the Google Maps API
  */
 export interface SearchOptions {
   location?: GeoLocation;
   radius?: number;
+  apiKey?: string;
+  businessTypes?: readonly BusinessType[] | BusinessType[];
+  socialMediaDomains?: readonly string[] | string[];
+  batchSize?: number;
+  batchDelay?: number;
+}
+
+/**
+ * Multi-location search options
+ */
+export interface MultiLocationSearchOptions {
+  locations: LocationWithRadius[];
   apiKey?: string;
   businessTypes?: readonly BusinessType[] | BusinessType[];
   socialMediaDomains?: readonly string[] | string[];
@@ -39,6 +60,7 @@ export interface BusinessResult {
   totalRatings?: number;
   latLng?: GeoLocation;
   place_id?: string;
+  searchLocation?: string; // Which location this result came from
 }
 
 /**
